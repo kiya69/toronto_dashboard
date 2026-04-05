@@ -1,0 +1,16 @@
+neighborhood_id,neighborhood_name,latitude,longitude,population,median_income,total_active_businesses,category_diversity,top_business_category,business_density_score,construction_count,development_intensity_score,cluster_label,opportunity_score,recommended_business_type
+1,Downtown,43.6532,-79.3832,75000,95000,680,12,Food & Beverage,9.2,180,8.5,0,45.2,Fitness & Wellness
+2,Liberty Village,43.6396,-79.4206,32000,88000,310,9,Cafes & Bakeries,7.1,95,7.8,1,72.5,Pet Services
+3,North York,43.7615,-79.4111,68000,72000,420,11,Professional Services,6.5,140,6.9,2,61.3,Specialty Retail
+4,Scarborough,43.7731,-79.2578,82000,65000,390,10,Food & Beverage,5.2,110,6.0,2,78.4,Cafes & Bakeries
+5,Etobicoke,43.6205,-79.5132,54000,78000,350,8,Retail,5.8,85,5.7,1,69.1,Fitness & Wellness
+6,East York,43.6896,-79.327,28000,71000,210,7,Cafes & Bakeries,4.9,45,4.8,3,81.6,Pet Services
+7,York,43.6895,-79.4792,41000,68000,260,8,Professional Services,5.4,60,5.1,3,76.3,Specialty Retail
+8,The Beaches,43.6766,-79.293,22000,92000,180,6,Cafes & Bakeries,4.3,35,4.2,3,88.7,Fitness & Wellness
+9,Roncesvalles,43.648,-79.451,19000,87000,160,6,Food & Beverage,4.8,40,4.5,3,84.9,Specialty Retail
+10,Kensington Market,43.6545,-79.4,17000,60000,230,9,Food & Beverage,6.2,55,5.3,1,67.8,Pet Services
+11,Leaside,43.709,-79.3635,24000,105000,150,5,Professional Services,3.9,30,3.8,3,91.2,Cafes & Bakeries
+12,Parkdale,43.6404,-79.437,36000,58000,280,10,Retail,6.8,75,6.4,1,74.5,Fitness & Wellness
+13,Danforth,43.678,-79.347,29000,77000,220,7,Cafes & Bakeries,5.1,50,4.9,3,82.1,Pet Services
+14,Willowdale,43.766,-79.4,51000,83000,300,9,Retail,5.9,90,6.2,2,70.4,Specialty Retail
+15,Midtown,43.706,-79.398,47000,98000,340,10,Professional Services,6.7,120,7.0,0,58.6,Fitness & Wellness
