@@ -24,8 +24,6 @@ CSV_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
 # --------------------------------------------------
 # Cached data loader
-# TTL is set to 10 seconds for testing refresh behavior
-# Increase later if needed (for example, 300 seconds)
 # --------------------------------------------------
 @st.cache_data(ttl=10)
 def load_data():
@@ -45,22 +43,104 @@ if st.button("Refresh data"):
 df = load_data()
 
 # --------------------------------------------------
-# Cluster label mapping
-# This makes the cluster output easier to explain
+# Basic cleanup
 # --------------------------------------------------
-cluster_names = {
-    0: "High Density / Competitive",
-    1: "Growing Commercial Areas",
-    2: "Balanced Residential Zones",
-    3: "Underserved Opportunity Areas"
-}
+df.columns = [col.strip() for col in df.columns]
 
-df["cluster_name"] = df["cluster_label"].map(cluster_names)
+required_cols = [
+    "neighborhood_id",
+    "total_active_businesses",
+    "neighborhood_name",
+    "latitude",
+    "longitude",
+    "population",
+    "median_income",
+    "Category",
+    "category_business_count"
+]
+
+missing_cols = [col for col in required_cols if col not in df.columns]
+if missing_cols:
+    st.error(f"Missing required columns in source data: {missing_cols}")
+    st.stop()
+
+# Convert numeric fields
+numeric_cols = [
+    "neighborhood_id",
+    "total_active_businesses",
+    "latitude",
+    "longitude",
+    "population",
+    "median_income",
+    "category_business_count"
+]
+
+for col in numeric_cols:
+    df[col] = pd.to_numeric(df[col], errors="coerce")
+
+df = df.dropna(subset=[
+    "neighborhood_id",
+    "neighborhood_name",
+    "latitude",
+    "longitude",
+    "population",
+    "median_income",
+    "Category",
+    "category_business_count",
+    "total_active_businesses"
+])
 
 # --------------------------------------------------
-# Business category color definitions
-# Hex colors are used for charts and sidebar swatches
-# RGBA colors are used for the map points
+# Opportunity score calculation
+# Current scoring logic:
+# 35% total_active_businesses
+# 25% category_business_count
+# 20% population
+# 20% median_income
+# --------------------------------------------------
+def normalize(series):
+    max_val = series.max()
+    min_val = series.min()
+    if max_val == min_val:
+        return pd.Series([1.0] * len(series), index=series.index)
+    return (series - min_val) / (max_val - min_val)
+
+df["norm_total_businesses"] = normalize(df["total_active_businesses"])
+df["norm_category_businesses"] = normalize(df["category_business_count"])
+df["norm_population"] = normalize(df["population"])
+df["norm_income"] = normalize(df["median_income"])
+
+df["opportunity_score"] = (
+    0.35 * df["norm_total_businesses"] +
+    0.25 * df["norm_category_businesses"] +
+    0.20 * df["norm_population"] +
+    0.20 * df["norm_income"]
+) * 100
+
+df["opportunity_score"] = df["opportunity_score"].round(1)
+
+# --------------------------------------------------
+# High opportunity flag
+# --------------------------------------------------
+df["high_opportunity_flag"] = df["opportunity_score"] >= 80
+
+# --------------------------------------------------
+# Cluster segmentation (rule-based for storytelling)
+# --------------------------------------------------
+def assign_cluster(score):
+    if score >= 85:
+        return "Underserved Opportunity Areas"
+    elif score >= 70:
+        return "Growing Commercial Areas"
+    elif score >= 50:
+        return "Balanced Residential Zones"
+    else:
+        return "High Density / Competitive"
+
+df["cluster_name"] = df["opportunity_score"].apply(assign_cluster)
+
+# --------------------------------------------------
+# Business category colors
 # --------------------------------------------------
 category_hex = {
     "Fitness & Wellness": "#dc3232",
@@ -68,7 +148,9 @@ category_hex = {
     "Specialty Retail": "#4682b4",
     "Cafes & Bakeries": "#ffd700",
     "Professional Services": "#a050dc",
-    "Tech & Gadgets": "#00c8aa"
+    "Tech & Gadgets": "#00c8aa",
+    "Food & Beverage": "#ff4d6d",
+    "Retail": "#4cc9f0"
 }
 
 category_rgba = {
@@ -77,7 +159,9 @@ category_rgba = {
     "Specialty Retail": [70, 130, 180, 160],
     "Cafes & Bakeries": [255, 215, 0, 160],
     "Professional Services": [160, 80, 220, 160],
-    "Tech & Gadgets": [0, 200, 170, 160]
+    "Tech & Gadgets": [0, 200, 170, 160],
+    "Food & Beverage": [255, 77, 109, 160],
+    "Retail": [76, 201, 240, 160]
 }
 
 # --------------------------------------------------
@@ -85,28 +169,20 @@ category_rgba = {
 # --------------------------------------------------
 st.sidebar.header("Filters")
 
-# Neighborhood filter
 selected_neighborhoods = st.sidebar.multiselect(
     "Neighborhood",
     options=sorted(df["neighborhood_name"].unique()),
     default=sorted(df["neighborhood_name"].unique())
 )
 
-# --------------------------------------------------
-# Business Type filter with color swatches
-# Using checkboxes with a colored square beside each label
-# This is more controllable than styling multiselect items
-# --------------------------------------------------
 st.sidebar.markdown("### Business Type")
 
-category_order = [
-    category for category in category_hex.keys()
-    if category in df["recommended_business_type"].unique()
-]
-
+category_order = sorted(df["Category"].dropna().unique())
 selected_categories = []
 
 for category in category_order:
+    color = category_hex.get(category, "#999999")
+
     col_swatch, col_check = st.sidebar.columns([1, 6])
 
     with col_swatch:
@@ -115,7 +191,7 @@ for category in category_order:
             <div style="
                 width: 16px;
                 height: 16px;
-                background-color: {category_hex[category]};
+                background-color: {color};
                 border-radius: 3px;
                 margin-top: 8px;
             "></div>
@@ -133,7 +209,6 @@ for category in category_order:
     if is_selected:
         selected_categories.append(category)
 
-# Median income filter
 income_range = st.sidebar.slider(
     "Median Income",
     min_value=int(df["median_income"].min()),
@@ -141,7 +216,6 @@ income_range = st.sidebar.slider(
     value=(int(df["median_income"].min()), int(df["median_income"].max()))
 )
 
-# High opportunity filter
 only_high_opportunity = st.sidebar.checkbox(
     "Only high opportunity areas (score >= 80)",
     value=False
@@ -152,38 +226,35 @@ only_high_opportunity = st.sidebar.checkbox(
 # --------------------------------------------------
 filtered_df = df[
     (df["neighborhood_name"].isin(selected_neighborhoods)) &
-    (df["recommended_business_type"].isin(selected_categories)) &
+    (df["Category"].isin(selected_categories)) &
     (df["median_income"].between(income_range[0], income_range[1]))
-]
+].copy()
 
 if only_high_opportunity:
-    filtered_df = filtered_df[filtered_df["opportunity_score"] >= 80]
+    filtered_df = filtered_df[filtered_df["high_opportunity_flag"]]
 
-# --------------------------------------------------
-# Handle empty results
-# --------------------------------------------------
 if filtered_df.empty:
     st.warning("No data available with the selected filters.")
     st.stop()
 
 # --------------------------------------------------
-# Business explanation of the score
+# Score explanation
 # --------------------------------------------------
 st.info(
-    "Opportunity Score is a composite indicator based on business density, "
-    "population, median income, and development activity."
+    "Opportunity Score is a normalized composite indicator based on total business activity, "
+    "category concentration, population, and median income."
 )
 
 # --------------------------------------------------
 # KPI calculations
 # --------------------------------------------------
 top_category = (
-    filtered_df["recommended_business_type"].mode()[0]
-    if not filtered_df["recommended_business_type"].mode().empty
+    filtered_df["Category"].mode()[0]
+    if not filtered_df["Category"].mode().empty
     else "N/A"
 )
 
-high_op_count = int((filtered_df["opportunity_score"] >= 80).sum())
+high_op_count = int(filtered_df["high_opportunity_flag"].sum())
 
 top_area_name = (
     filtered_df.sort_values("opportunity_score", ascending=False)
@@ -201,17 +272,14 @@ col3.metric("Top Category", top_category)
 col4.metric("High Opportunity Areas", high_op_count)
 
 st.markdown("---")
-
-# --------------------------------------------------
-# Top area highlight
-# --------------------------------------------------
 st.success(f"Top opportunity area: {top_area_name}")
 
 # --------------------------------------------------
 # Prepare map data
 # --------------------------------------------------
-filtered_df = filtered_df.copy()
-filtered_df["color"] = filtered_df["recommended_business_type"].map(category_rgba)
+filtered_df["color"] = filtered_df["Category"].map(
+    lambda x: category_rgba.get(x, [180, 180, 180, 160])
+)
 filtered_df["radius"] = filtered_df["opportunity_score"] * 120
 
 # --------------------------------------------------
@@ -247,11 +315,12 @@ with left_col:
         "html": """
             <b>{neighborhood_name}</b><br/>
             Opportunity Score: {opportunity_score}<br/>
-            Recommended Business: {recommended_business_type}<br/>
+            Dominant Category: {Category}<br/>
             Cluster: {cluster_name}<br/>
             Population: {population}<br/>
             Median Income: ${median_income}<br/>
-            Businesses: {total_active_businesses}
+            Total Businesses: {total_active_businesses}<br/>
+            Category Business Count: {category_business_count}
         """,
         "style": {
             "backgroundColor": "#111111",
@@ -275,13 +344,12 @@ with right_col:
 
     st.write(f"**Neighborhood:** {top['neighborhood_name']}")
     st.write(f"**Opportunity Score:** {top['opportunity_score']}")
-    st.write(f"**Recommended Business:** {top['recommended_business_type']}")
+    st.write(f"**Dominant Category:** {top['Category']}")
     st.write(f"**Cluster:** {top['cluster_name']}")
     st.write(f"**Population:** {int(top['population']):,}")
     st.write(f"**Median Income:** ${int(top['median_income']):,}")
-    st.write(f"**Businesses:** {int(top['total_active_businesses'])}")
-    st.write(f"**Top Business Category:** {top['top_business_category']}")
-    st.write(f"**Construction Count:** {int(top['construction_count'])}")
+    st.write(f"**Total Businesses:** {int(top['total_active_businesses'])}")
+    st.write(f"**Category Business Count:** {int(top['category_business_count'])}")
 
 st.markdown("---")
 
@@ -294,7 +362,7 @@ with chart_col_1:
     st.subheader("Business Type Distribution")
 
     category_counts = (
-        filtered_df["recommended_business_type"]
+        filtered_df["Category"]
         .value_counts()
         .reset_index()
     )
@@ -319,13 +387,13 @@ with chart_col_1:
     st.plotly_chart(fig_bar, use_container_width=True)
 
 with chart_col_2:
-    st.subheader("Opportunity vs Density")
+    st.subheader("Opportunity vs Category Business Count")
 
     fig_scatter = px.scatter(
         filtered_df,
-        x="business_density_score",
+        x="category_business_count",
         y="opportunity_score",
-        color="recommended_business_type",
+        color="Category",
         size="population",
         hover_name="neighborhood_name",
         color_discrete_map=category_hex
@@ -333,7 +401,7 @@ with chart_col_2:
 
     fig_scatter.update_layout(
         template="plotly_dark",
-        xaxis_title="Business Density Score",
+        xaxis_title="Category Business Count",
         yaxis_title="Opportunity Score"
     )
 
