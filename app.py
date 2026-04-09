@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import pydeck as pdk
+from plotly.colors import qualitative
 
 # --------------------------------------------------
 # Page configuration
@@ -18,8 +19,9 @@ st.title("Business Location Recommendation - Toronto")
 
 # --------------------------------------------------
 # Data source
+# Replace with the NEW Google Drive file ID
 # --------------------------------------------------
-FILE_ID = "1DM6YmMK4_C_Dk4YPWWQwRJLryeHwKxum"
+FILE_ID = "PUT_NEW_FILE_ID_HERE"
 CSV_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
 # --------------------------------------------------
@@ -64,7 +66,7 @@ if missing_cols:
     st.error(f"Missing required columns in source data: {missing_cols}")
     st.stop()
 
-# Convert numeric fields
+# Convert numeric columns
 numeric_cols = [
     "neighborhood_id",
     "total_active_businesses",
@@ -78,25 +80,21 @@ numeric_cols = [
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
-df = df.dropna(subset=[
-    "neighborhood_id",
-    "neighborhood_name",
-    "latitude",
-    "longitude",
-    "population",
-    "median_income",
-    "Category",
-    "category_business_count",
-    "total_active_businesses"
-])
+df = df.dropna(subset=required_cols)
 
 # --------------------------------------------------
-# Opportunity score calculation
-# Current scoring logic:
-# 35% total_active_businesses
-# 25% category_business_count
-# 20% population
-# 20% median_income
+# Debug section
+# This helps confirm we are reading the correct file
+# --------------------------------------------------
+with st.expander("Debug / Source File Check"):
+    st.write("Rows:", len(df))
+    st.write("Unique neighborhoods:", df["neighborhood_name"].nunique())
+    st.write("Unique categories:", df["Category"].nunique())
+    st.write("Categories found:", sorted(df["Category"].unique().tolist()))
+    st.dataframe(df.head(10), use_container_width=True)
+
+# --------------------------------------------------
+# Helper function for normalization
 # --------------------------------------------------
 def normalize(series):
     max_val = series.max()
@@ -105,6 +103,14 @@ def normalize(series):
         return pd.Series([1.0] * len(series), index=series.index)
     return (series - min_val) / (max_val - min_val)
 
+# --------------------------------------------------
+# Opportunity score calculation
+# Weighted score:
+# 35% total_active_businesses
+# 25% category_business_count
+# 20% population
+# 20% median_income
+# --------------------------------------------------
 df["norm_total_businesses"] = normalize(df["total_active_businesses"])
 df["norm_category_businesses"] = normalize(df["category_business_count"])
 df["norm_population"] = normalize(df["population"])
@@ -125,7 +131,7 @@ df["opportunity_score"] = df["opportunity_score"].round(1)
 df["high_opportunity_flag"] = df["opportunity_score"] >= 80
 
 # --------------------------------------------------
-# Cluster segmentation (rule-based for storytelling)
+# Rule-based segmentation for storytelling
 # --------------------------------------------------
 def assign_cluster(score):
     if score >= 85:
@@ -140,28 +146,39 @@ def assign_cluster(score):
 df["cluster_name"] = df["opportunity_score"].apply(assign_cluster)
 
 # --------------------------------------------------
-# Business category colors
+# Dynamic category color generation
+# No hardcoding
 # --------------------------------------------------
+unique_categories = sorted(df["Category"].unique().tolist())
+
+plotly_palette = (
+    qualitative.Plotly +
+    qualitative.Dark24 +
+    qualitative.G10 +
+    qualitative.T10
+)
+
+# Ensure enough colors
+while len(plotly_palette) < len(unique_categories):
+    plotly_palette = plotly_palette + plotly_palette
+
 category_hex = {
-    "Fitness & Wellness": "#dc3232",
-    "Pet Services": "#ff8c00",
-    "Specialty Retail": "#4682b4",
-    "Cafes & Bakeries": "#ffd700",
-    "Professional Services": "#a050dc",
-    "Tech & Gadgets": "#00c8aa",
-    "Food & Beverage": "#ff4d6d",
-    "Retail": "#4cc9f0"
+    cat: plotly_palette[i]
+    for i, cat in enumerate(unique_categories)
 }
 
+def hex_to_rgba(hex_color, alpha=160):
+    hex_color = hex_color.lstrip("#")
+    return [
+        int(hex_color[0:2], 16),
+        int(hex_color[2:4], 16),
+        int(hex_color[4:6], 16),
+        alpha
+    ]
+
 category_rgba = {
-    "Fitness & Wellness": [220, 50, 50, 160],
-    "Pet Services": [255, 140, 0, 160],
-    "Specialty Retail": [70, 130, 180, 160],
-    "Cafes & Bakeries": [255, 215, 0, 160],
-    "Professional Services": [160, 80, 220, 160],
-    "Tech & Gadgets": [0, 200, 170, 160],
-    "Food & Beverage": [255, 77, 109, 160],
-    "Retail": [76, 201, 240, 160]
+    cat: hex_to_rgba(color, alpha=160)
+    for cat, color in category_hex.items()
 }
 
 # --------------------------------------------------
@@ -177,10 +194,9 @@ selected_neighborhoods = st.sidebar.multiselect(
 
 st.sidebar.markdown("### Business Type")
 
-category_order = sorted(df["Category"].dropna().unique())
 selected_categories = []
 
-for category in category_order:
+for category in unique_categories:
     color = category_hex.get(category, "#999999")
 
     col_swatch, col_check = st.sidebar.columns([1, 6])
@@ -238,7 +254,7 @@ if filtered_df.empty:
     st.stop()
 
 # --------------------------------------------------
-# Score explanation
+# Business explanation
 # --------------------------------------------------
 st.info(
     "Opportunity Score is a normalized composite indicator based on total business activity, "
@@ -315,7 +331,7 @@ with left_col:
         "html": """
             <b>{neighborhood_name}</b><br/>
             Opportunity Score: {opportunity_score}<br/>
-            Dominant Category: {Category}<br/>
+            Category: {Category}<br/>
             Cluster: {cluster_name}<br/>
             Population: {population}<br/>
             Median Income: ${median_income}<br/>
@@ -344,7 +360,7 @@ with right_col:
 
     st.write(f"**Neighborhood:** {top['neighborhood_name']}")
     st.write(f"**Opportunity Score:** {top['opportunity_score']}")
-    st.write(f"**Dominant Category:** {top['Category']}")
+    st.write(f"**Category:** {top['Category']}")
     st.write(f"**Cluster:** {top['cluster_name']}")
     st.write(f"**Population:** {int(top['population']):,}")
     st.write(f"**Median Income:** ${int(top['median_income']):,}")
