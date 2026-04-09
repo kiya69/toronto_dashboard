@@ -82,17 +82,35 @@ for col in numeric_cols:
 
 df = df.dropna(subset=required_cols)
 
+def prettify_category(text):
+    if pd.isna(text):
+        return text
+
+    mapping = {
+        "TAKE-OUT OR RETAIL FOOD ESTABLISHMENT": "Take-Out or Retail Food Establishment",
+        "EATING OR DRINKING ESTABLISHMENT": "Eating or Drinking Establishment",
+        "PUBLIC GARAGE": "Public Garage",
+        "HOLISTIC CENTRE": "Holistic Centre",
+        "PERSONAL SERVICES SETTINGS": "Personal Services Settings",
+        "COMMERCIAL PARKING LOT": "Commercial Parking Lot",
+        "TAXICAB OWNER": "Taxicab Owner"
+    }
+    return mapping.get(text, str(text).title())
+
+df["Category_Display"] = df["Category"].apply(prettify_category)
+
 # --------------------------------------------------
 # Debug section
 # This helps confirm we are reading the correct file
 # --------------------------------------------------
+'''
 with st.expander("Debug / Source File Check"):
     st.write("Rows:", len(df))
     st.write("Unique neighborhoods:", df["neighborhood_name"].nunique())
     st.write("Unique categories:", df["Category"].nunique())
     st.write("Categories found:", sorted(df["Category"].unique().tolist()))
     st.dataframe(df.head(10), use_container_width=True)
-
+'''
 # --------------------------------------------------
 # Helper function for normalization
 # --------------------------------------------------
@@ -128,8 +146,8 @@ df["opportunity_score"] = df["opportunity_score"].round(1)
 # --------------------------------------------------
 # High opportunity flag
 # --------------------------------------------------
-df["high_opportunity_flag"] = df["opportunity_score"] >= 80
-
+high_op_threshold = df["opportunity_score"].quantile(0.75)
+df["high_opportunity_flag"] = df["opportunity_score"] >= high_op_threshold
 # --------------------------------------------------
 # Rule-based segmentation for storytelling
 # --------------------------------------------------
@@ -149,7 +167,7 @@ df["cluster_name"] = df["opportunity_score"].apply(assign_cluster)
 # Dynamic category color generation
 # No hardcoding
 # --------------------------------------------------
-unique_categories = sorted(df["Category"].unique().tolist())
+unique_categories = sorted(df["Category_Display"].unique().tolist())
 
 plotly_palette = (
     qualitative.Plotly +
@@ -242,7 +260,7 @@ only_high_opportunity = st.sidebar.checkbox(
 # --------------------------------------------------
 filtered_df = df[
     (df["neighborhood_name"].isin(selected_neighborhoods)) &
-    (df["Category"].isin(selected_categories)) &
+    (df["Category_Display"].isin(selected_categories)) &
     (df["median_income"].between(income_range[0], income_range[1]))
 ].copy()
 
@@ -331,7 +349,7 @@ with left_col:
         "html": """
             <b>{neighborhood_name}</b><br/>
             Opportunity Score: {opportunity_score}<br/>
-            Category: {Category}<br/>
+            Category: {Category_Display}<br/>
             Cluster: {cluster_name}<br/>
             Population: {population}<br/>
             Median Income: ${median_income}<br/>
@@ -403,21 +421,21 @@ with chart_col_1:
     st.plotly_chart(fig_bar, use_container_width=True)
 
 with chart_col_2:
-    st.subheader("Opportunity vs Category Business Count")
+    st.subheader("Opportunity vs Total Active Businesses")
 
     fig_scatter = px.scatter(
         filtered_df,
-        x="category_business_count",
+        x="total_active_businesses",
         y="opportunity_score",
-        color="Category",
-        size="population",
+        color="Category_Display",
+        size="category_business_count",
         hover_name="neighborhood_name",
         color_discrete_map=category_hex
     )
 
     fig_scatter.update_layout(
         template="plotly_dark",
-        xaxis_title="Category Business Count",
+        xaxis_title="Total Active Businesses",
         yaxis_title="Opportunity Score"
     )
 
