@@ -271,8 +271,8 @@ st.info(
 # KPI calculations
 # --------------------------------------------------
 top_category = (
-    filtered_df["Category"].mode()[0]
-    if not filtered_df["Category"].mode().empty
+    filtered_df["Category_Display"].mode()[0]
+    if not filtered_df["Category_Display"].mode().empty
     else "N/A"
 )
 
@@ -299,7 +299,7 @@ st.success(f"Top opportunity area: {top_area_name}")
 # --------------------------------------------------
 # Prepare map data
 # --------------------------------------------------
-filtered_df["color"] = filtered_df["Category"].map(
+filtered_df["color"] = filtered_df["Category_Display"].map(
     lambda x: category_rgba.get(x, [180, 180, 180, 160])
 )
 filtered_df["radius"] = filtered_df["opportunity_score"] * 120
@@ -366,7 +366,7 @@ with right_col:
 
     st.write(f"**Neighborhood:** {top['neighborhood_name']}")
     st.write(f"**Opportunity Score:** {top['opportunity_score']}")
-    st.write(f"**Category:** {top['Category']}")
+    st.write(f"**Category:** {top['Category_Display']}")
     st.write(f"**Cluster:** {top['cluster_name']}")
     st.write(f"**Population:** {int(top['population']):,}")
     st.write(f"**Median Income:** ${int(top['median_income']):,}")
@@ -384,7 +384,7 @@ with chart_col_1:
     st.subheader("Business Type Distribution")
 
     category_counts = (
-        filtered_df["Category"]
+        filtered_df["Category_Display"]
         .value_counts()
         .reset_index()
     )
